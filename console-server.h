@@ -163,6 +163,7 @@ struct console {
 
 	// values to configure the mux
 	unsigned long mux_index;
+	const char *tty_name;
 };
 
 /* poller API */

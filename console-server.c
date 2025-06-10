@@ -421,7 +421,7 @@ static int tty_init_vuart(struct console_server *server, struct config *config)
 	return 0;
 }
 
-static int tty_init(struct console_server *server, struct config *config,
+int tty_init(struct console_server *server, struct config *config,
 		    const char *tty_arg)
 {
 	const char *val;
@@ -1047,6 +1047,7 @@ static struct console *console_init(struct console_server *server,
 {
 	size_t buffer_size = default_buffer_size;
 	const char *buffer_size_str = NULL;
+	const char *tty_name;
 	int rc;
 
 	struct console *console = calloc(1, sizeof(struct console));
@@ -1071,6 +1072,9 @@ static struct console *console_init(struct console_server *server,
 			     buffer_size >> 10);
 		}
 	}
+
+	tty_name = config_get_section_value(config, console_id, "tty");
+	console->tty_name = tty_name;
 
 	console->rb = ringbuffer_init(buffer_size);
 	if (!console->rb) {
@@ -1225,11 +1229,15 @@ int console_server_init(struct console_server *server,
 
 	uart_routing_init(server->config);
 
+	/*
 	rc = tty_init(server, server->config, config_tty_kname);
 	if (rc != 0) {
 		warnx("error during tty_init, exiting.\n");
 		return -1;
 	}
+	*/
+	rc = config_tty_kname == NULL ? 0 : 1;
+	if (rc) return -1;
 
 	rc = dbus_server_init(server);
 	if (rc != 0) {
@@ -1296,11 +1304,13 @@ int main(int argc, char **argv)
 		}
 	}
 
+	/*
 	if (optind < argc) {
 		config_tty_kname = argv[optind];
 	} else {
 		errx(EXIT_FAILURE, "no tty device path has been provided\n");
 	}
+	*/
 
 	rc = console_server_init(&server, config_filename, config_tty_kname,
 				 console_id);

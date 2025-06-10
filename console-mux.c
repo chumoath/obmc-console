@@ -271,12 +271,17 @@ static int console_mux_set_lines(struct console *console)
 	return 0;
 }
 
+int tty_init(struct console_server *server, struct config *config,
+                    const char *tty_arg);
+
 int console_mux_activate(struct console *console)
 {
 	struct console_server *server = console->server;
 	const bool first_activation = server->active == NULL;
 	const bool is_active = server->active == console;
 	int status = 0;
+	
+	tty_init(server, server->config, console->tty_name);
 
 	if (is_active) {
 		return 0;
