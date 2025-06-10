@@ -5,6 +5,7 @@
 #include <limits.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <fcntl.h>
 
 #include "console-server.h"
 #include "console-mux.h"
@@ -274,17 +275,92 @@ static int console_mux_set_lines(struct console *console)
 int tty_init(struct console_server *server, struct config *config,
                     const char *tty_arg);
 
+pid_t child_pid = -1;
+char pty_line[64];
+
+void start_debug(void)
+{
+	child_pid = vfork();
+	if (child_pid == 0) {
+		close(0);
+		open(pty_line, O_RDWR);
+		dup2(0, 1);
+		dup2(0, 2);
+		struct termios termbuf;
+		tcgetattr(0, &termbuf);
+		termbuf.c_lflag |= ECHO;
+		termbuf.c_oflag |= ONLCR | XTABS;
+		termbuf.c_iflag |= ICRNL;
+		termbuf.c_iflag &= ~IXOFF;
+		tcsetattr(STDIN_FILENO, TCSANOW, &termbuf);
+		char *envp[] = {"TERM=xterm",
+			"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/0/bus",
+			"DBUS_STARTER_BUS_TYPE=system",
+			NULL};
+		execve("/usr/bin/bmc_clid", NULL, envp);
+		exit(-2);
+	}
+}
+
+void handle_sigchld(int sig)
+{
+	int status;
+	pid_t pid;
+
+	while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+		if (pid == child_pid) {
+			printf ("Child process %d exited, status = %d, Restarting...\n", pid, status);
+			start_debug();
+		}
+	}
+}
+
+int pty_init(struct console *console)
+{
+	int p;
+	struct console_server *server = console->server;
+
+	signal(SIGCHLD, handle_sigchld);
+	p = open("/dev/ptmx", O_RDWR);
+	if ( p >= 0) {
+		grantpt(p);
+		unlockpt(p);
+		if (ptsname_r(p, pty_line, 63) != 0) {
+			exit(-2);
+		}
+		pty_line[63] = '\0';
+	}
+
+	printf ("pty_line = %s\n", pty_line);
+	start_debug();
+
+	server->tty.fd = p;
+	// TODO: need to free last
+	int index = console_server_request_pollfd(server, server->tty.fd, POLLIN);
+	if (index < 0) {
+		return -1;
+	}
+
+	server->tty_pollfd_index = (size_t)index;
+
+	return 0;
+}
+
 int console_mux_activate(struct console *console)
 {
 	struct console_server *server = console->server;
 	const bool first_activation = server->active == NULL;
 	const bool is_active = server->active == console;
 	int status = 0;
-	
-	tty_init(server, server->config, console->tty_name);
 
 	if (is_active) {
 		return 0;
+	}
+
+	if (!strncmp(console->console_id, "debug", 5)) {
+		pty_init(console);
+	} else {
+		tty_init(server, server->config, console->tty_name);
 	}
 
 	if (server->mux) {

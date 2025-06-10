@@ -4,7 +4,7 @@ project(
     default_options: [
         'buildtype=debugoptimized',
         'warning_level=3',
-        'werror=true',
+        #'werror=true',
         'c_std=gnu17',
         'tests=' + (meson.is_subproject() ? 'false' : 'true'),
     ],

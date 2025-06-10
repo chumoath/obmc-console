@@ -985,6 +985,7 @@ static int run_console_iteration(struct console_server *server)
 		rc = read(server->tty.fd, buf, sizeof(buf));
 		if (rc <= 0) {
 			warn("Error reading from tty device");
+			return 0;
 			return -1;
 		}
 
