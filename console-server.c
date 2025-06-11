@@ -1049,6 +1049,7 @@ static struct console *console_init(struct console_server *server,
 	size_t buffer_size = default_buffer_size;
 	const char *buffer_size_str = NULL;
 	const char *tty_name;
+	const char *exec_name;
 	int rc;
 
 	struct console *console = calloc(1, sizeof(struct console));
@@ -1076,6 +1077,12 @@ static struct console *console_init(struct console_server *server,
 
 	tty_name = config_get_section_value(config, console_id, "tty");
 	console->tty_name = tty_name;
+
+	exec_name = config_get_section_value(config, console_id, "exec");
+	console->exec_name = exec_name;
+	if (!console->exec_name) {
+		console->exec_name = "/bin/bash";
+	}
 
 	console->rb = ringbuffer_init(buffer_size);
 	if (!console->rb) {

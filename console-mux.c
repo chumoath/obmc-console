@@ -278,8 +278,9 @@ void tty_fini(struct console_server *server);
 
 static pid_t child_pid = -1;
 static char pty_line[64];
+static struct console *active_console = NULL;
 
-void start_debug(void)
+void start_debug(const char *exec)
 {
 	child_pid = vfork();
 	if (child_pid == 0) {
@@ -298,7 +299,7 @@ void start_debug(void)
 			"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/0/bus",
 			"DBUS_STARTER_BUS_TYPE=system",
 			NULL};
-		execve("/usr/bin/bmc_clid", NULL, envp);
+		execve(exec, NULL, envp);
 		exit(-2);
 	}
 }
@@ -311,7 +312,7 @@ void handle_sigchld(int sig)
 	while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
 		if (pid == child_pid) {
 			printf ("Child process %d exited, status = %d, Restarting...\n", pid, status);
-			start_debug();
+			start_debug(active_console->exec_name);
 		}
 	}
 }
@@ -334,7 +335,7 @@ int pty_init(struct console *console)
 	}
 
 	printf ("pty_line = %s\n", pty_line);
-	start_debug();
+	start_debug(console->exec_name);
 
 	server->tty.fd = p;
 	int index = console_server_request_pollfd(server, server->tty.fd, POLLIN);
@@ -413,6 +414,8 @@ int console_mux_activate(struct console *console)
 	}
 
 	server->active = console;
+
+	active_console = console;
 
 	/* Don't print disconnect/connect events on startup */
 	if (first_activation) {
