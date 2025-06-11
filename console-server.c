@@ -469,7 +469,7 @@ int tty_init(struct console_server *server, struct config *config,
 	return tty_init_io(server);
 }
 
-static void tty_fini(struct console_server *server)
+void tty_fini(struct console_server *server)
 {
 	if (server->tty_pollfd_index < server->capacity_pollfds) {
 		console_server_release_pollfd(server, server->tty_pollfd_index);

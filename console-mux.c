@@ -274,9 +274,10 @@ static int console_mux_set_lines(struct console *console)
 
 int tty_init(struct console_server *server, struct config *config,
                     const char *tty_arg);
+void tty_fini(struct console_server *server);
 
-pid_t child_pid = -1;
-char pty_line[64];
+static pid_t child_pid = -1;
+static char pty_line[64];
 
 void start_debug(void)
 {
@@ -320,7 +321,8 @@ int pty_init(struct console *console)
 	int p;
 	struct console_server *server = console->server;
 
-	signal(SIGCHLD, handle_sigchld);
+	console->sighandler_save = signal(SIGCHLD, handle_sigchld);
+
 	p = open("/dev/ptmx", O_RDWR);
 	if ( p >= 0) {
 		grantpt(p);
@@ -335,7 +337,6 @@ int pty_init(struct console *console)
 	start_debug();
 
 	server->tty.fd = p;
-	// TODO: need to free last
 	int index = console_server_request_pollfd(server, server->tty.fd, POLLIN);
 	if (index < 0) {
 		return -1;
@@ -344,6 +345,37 @@ int pty_init(struct console *console)
 	server->tty_pollfd_index = (size_t)index;
 
 	return 0;
+}
+
+void pty_fini(struct console_server *server)
+{
+        if (server->tty_pollfd_index < server->capacity_pollfds) {
+                console_server_release_pollfd(server, server->tty_pollfd_index);
+                server->tty_pollfd_index = SIZE_MAX;
+        }
+
+	signal(SIGCHLD, server->active->sighandler_save);
+
+	if (child_pid != -1) {
+		if (kill(child_pid, SIGTERM) < 0) {
+			perror("kill debug process failed");
+			kill(child_pid, SIGKILL);
+		} else {
+			printf ("Sent SIGTERM to debug process %d\n", child_pid);
+		}
+
+		int status;
+		if (waitpid(child_pid, &status, 0) < 0) {
+			perror("waitpid failed");
+		} else {
+			if (WIFEXITED(status)) {
+				printf ("Child exited with status %d\n", WEXITSTATUS(status));
+			} else if (WIFSIGNALED(status)) {
+				printf ("Child killed by signal %d\n", WTERMSIG(status));
+			}
+		}
+	}
+	child_pid = -1;
 }
 
 int console_mux_activate(struct console *console)
@@ -355,6 +387,14 @@ int console_mux_activate(struct console *console)
 
 	if (is_active) {
 		return 0;
+	}
+
+	if (server->active) {
+		if (strncmp(server->active->console_id, "debug", 5)) {
+			tty_fini(server);
+		} else {
+			pty_fini(server);
+		}
 	}
 
 	if (!strncmp(console->console_id, "debug", 5)) {
